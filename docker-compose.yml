@@ -1,0 +1,14 @@
+version: "3.9"
+
+services:
+  spark:
+    build: .
+    container_name: spark_container
+    volumes:
+      - ./data:/app/data
+      - ./scripts:/app/scripts
+      - ./notebooks:/app/notebooks
+      - ./results:/app/results
+    ports:
+      - "4040:4040"
+    tty: true
