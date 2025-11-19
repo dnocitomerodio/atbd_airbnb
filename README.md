@@ -1,8 +1,6 @@
-### Proyecto Airbnb - Configuración de Entorno Hadoop y Spark en WSL
+# Proyecto Airbnb - Configuración de Entorno Hadoop y Spark en WSL
 
 Este README explica cómo instalar, configurar y usar Hadoop 3.3.6 y Spark 3.4.3 en Ubuntu WSL en Windows.
-
-. Requisitos previos
 
 # Requisitos previos: Windows 10 o 11 con WSL2 y Ubuntu 24.04 LTS instalada.
 
@@ -99,3 +97,4 @@ Simplemente sal de la consola de Spark con:
 :quit en spark-shell
 
 exit() en pyspark
+
