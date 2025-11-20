@@ -7,7 +7,8 @@ services:
       - ./scripts:/app/scripts
       - ./notebooks:/app/notebooks
       - ./results:/app/results
+      - ~/.kaggle:/root/.kaggle
     ports:
       - "4040:4040"
+      - "8888:8888"
     tty: true
-
