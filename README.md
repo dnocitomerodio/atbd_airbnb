@@ -98,3 +98,26 @@ Simplemente sal de la consola de Spark con:
 
 exit() en pyspark
 
+# Docker
+
+Para iniciar el proyecto con un contenedor, ejecute lo siguiente:
+
+docker-compose build
+
+Seguido:
+
+docker-compose up
+
+# ¿Cómo comprobar que todo funciona?
+
+Abre otra terminal (no detengas el docker-compose up) y ejecuta:
+
+docker exec -it spark_container bash
+
+Dentro del contenedor, ver si Hadoop está levantado:
+
+jps
+
+Ver si Spark funciona:
+
+pyspark
