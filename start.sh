@@ -27,7 +27,6 @@ cat > "$CFG_DIR/core-site.xml" <<'EOF'
   </property>
 </configuration>
 EOF
-echo "Wrote core-site.xml"
 
 cat > "$CFG_DIR/hdfs-site.xml" <<'EOF'
 <?xml version="1.0"?>
@@ -54,7 +53,6 @@ cat > "$CFG_DIR/hdfs-site.xml" <<'EOF'
   </property>
 </configuration>
 EOF
-echo "Wrote hdfs-site.xml"
 
 if [ ! -s "$CFG_DIR/yarn-site.xml" ]; then
   cat > "$CFG_DIR/yarn-site.xml" <<'EOF'
@@ -70,7 +68,6 @@ if [ ! -s "$CFG_DIR/yarn-site.xml" ]; then
   </property>
 </configuration>
 EOF
-  echo "Wrote yarn-site.xml"
 fi
 
 if ! grep -q "export JAVA_HOME" "$CFG_DIR/hadoop-env.sh"; then
@@ -81,7 +78,7 @@ echo "=== Limpieza de directorios temporales de Hadoop ==="
 rm -rf /tmp/hadoop-* || true
 
 echo "=== Descargando datos con KaggleHub ==="
-python3 /app/src/ingestion/download_data.py || echo "Advertencia: Falló la descarga de datos o ya existen"
+python3 /app/src/ingestion/download_data.py || echo "Advertencia: Falló la descarga o ya existen"
 
 echo "=== Verificando NameNode ==="
 if [ ! -d "$HADOOP_HOME/data/namenode/current" ]; then
@@ -106,18 +103,25 @@ done
 
 echo "HDFS accesible y listo para escritura."
 
+echo "=== Preparando datos para subida ==="
+if [ -d "/app/data/Airbnb Data" ]; then
+    echo "Renombrando carpeta 'Airbnb Data' para evitar errores de espacios..."
+    mv "/app/data/Airbnb Data" /app/data/airbnb_clean
+fi
+
 echo "=== Subiendo datos al HDFS ==="
 hdfs dfs -fs hdfs://localhost:9000 -mkdir -p /data/airbnb || true
 
-if [ -d "/app/data/Airbnb Data" ]; then
-    echo "Carpeta 'Airbnb Data' encontrada. Subiendo..."
-    hdfs dfs -fs hdfs://localhost:9000 -put -f "/app/data/Airbnb Data/"* /data/airbnb/ || true
+if [ -d "/app/data/airbnb_clean" ]; then
+    echo "Subiendo archivos desde carpeta limpia..."
+    hdfs dfs -fs hdfs://localhost:9000 -put -f /app/data/airbnb_clean/* /data/airbnb/ || true
 elif [ -d "/app/data" ]; then
-    echo "Carpeta específica no encontrada, subiendo contenido de /app/data..."
-    hdfs dfs -fs hdfs://localhost:9000 -put -f /app/data/* /data/airbnb/ || true
-else
-    echo "ADVERTENCIA: No se encontraron datos en /app/data"
+    echo "Buscando archivos csv en /app/data..."
+    find /app/data -name "*.csv" -exec hdfs dfs -fs hdfs://localhost:9000 -put -f {} /data/airbnb/ \; || true
 fi
+
+echo "=== Verificando archivos en HDFS ==="
+hdfs dfs -fs hdfs://localhost:9000 -ls /data/airbnb
 
 echo "=== Ejecutando PySpark analyses ==="
 python3 /app/src/analyses/run_analyses.py || echo "Analíticas terminadas con errores no fatales"
