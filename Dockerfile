@@ -33,7 +33,7 @@ RUN mkdir -p $HADOOP_HOME/data/namenode $HADOOP_HOME/data/datanode && \
     chown -R hadoop:hadoop $HADOOP_HOME
 
 RUN pip3 install --upgrade pip && \
-    pip3 install --no-cache-dir jupyterlab pyspark pandas kagglehub kaggle
+    pip3 install --no-cache-dir jupyterlab pyspark pandas kagglehub kaggle pyarrow
 
 RUN mkdir -p /home/hadoop/.ssh && \
     ssh-keygen -t rsa -P "" -f /home/hadoop/.ssh/id_rsa && \
@@ -45,6 +45,7 @@ RUN mkdir -p /home/hadoop/.ssh && \
 WORKDIR /app
 
 RUN mkdir -p /app/notebooks /app/src /app/data
+
 COPY src/ /app/src/
 COPY data/ /app/data/
 

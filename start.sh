@@ -9,7 +9,8 @@ export HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
 export PATH="$JAVA_HOME/bin:$PATH"
 
 export SPARK_HOME=/opt/spark
-export PYTHONPATH=$SPARK_HOME/python:$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH
+PY4J_ZIP=$(ls $SPARK_HOME/python/lib/py4j-*-src.zip | head -n 1)
+export PYTHONPATH=$SPARK_HOME/python:$PY4J_ZIP:$PYTHONPATH
 export PYSPARK_PYTHON=python3
 export PYSPARK_DRIVER_PYTHON=python3
 
@@ -17,8 +18,7 @@ CFG_DIR="$HADOOP_HOME/etc/hadoop"
 
 echo "=== Verificando/creando configs de Hadoop ==="
 
-if [ ! -s "$CFG_DIR/core-site.xml" ]; then
-  cat > "$CFG_DIR/core-site.xml" <<'EOF'
+cat > "$CFG_DIR/core-site.xml" <<'EOF'
 <?xml version="1.0"?>
 <configuration>
   <property>
@@ -27,11 +27,9 @@ if [ ! -s "$CFG_DIR/core-site.xml" ]; then
   </property>
 </configuration>
 EOF
-  echo "Wrote core-site.xml"
-fi
+echo "Wrote core-site.xml"
 
-if [ ! -s "$CFG_DIR/hdfs-site.xml" ]; then
-  cat > "$CFG_DIR/hdfs-site.xml" <<'EOF'
+cat > "$CFG_DIR/hdfs-site.xml" <<'EOF'
 <?xml version="1.0"?>
 <configuration>
   <property>
@@ -50,10 +48,13 @@ if [ ! -s "$CFG_DIR/hdfs-site.xml" ]; then
     <name>dfs.webhdfs.enabled</name>
     <value>true</value>
   </property>
+  <property>
+    <name>dfs.permissions.enabled</name>
+    <value>false</value>
+  </property>
 </configuration>
 EOF
-  echo "Wrote hdfs-site.xml"
-fi
+echo "Wrote hdfs-site.xml"
 
 if [ ! -s "$CFG_DIR/yarn-site.xml" ]; then
   cat > "$CFG_DIR/yarn-site.xml" <<'EOF'
@@ -74,14 +75,13 @@ fi
 
 if ! grep -q "export JAVA_HOME" "$CFG_DIR/hadoop-env.sh"; then
   echo -e "\nexport JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> "$CFG_DIR/hadoop-env.sh"
-  echo "Appended JAVA_HOME to hadoop-env.sh"
 fi
 
 echo "=== Limpieza de directorios temporales de Hadoop ==="
 rm -rf /tmp/hadoop-* || true
 
 echo "=== Descargando datos con KaggleHub ==="
-python3 /app/src/ingestion/download_data.py || true
+python3 /app/src/ingestion/download_data.py || echo "Advertencia: Falló la descarga de datos o ya existen"
 
 echo "=== Verificando NameNode ==="
 if [ ! -d "$HADOOP_HOME/data/namenode/current" ]; then
@@ -92,28 +92,31 @@ else
 fi
 
 echo "=== Iniciando HDFS y YARN ==="
-start-dfs.sh
-start-yarn.sh
+$HADOOP_HOME/sbin/start-dfs.sh
+$HADOOP_HOME/sbin/start-yarn.sh
 
-echo "=== Esperando que HDFS salga del Safe Mode ==="
-until hdfs dfs -ls / >/dev/null 2>&1; do 
-  echo "Esperando a NameNode..."
-  sleep 2
+echo "=== Esperando arranque de HDFS ==="
+sleep 5
+
+echo "=== Esperando a salir de Safe Mode ==="
+until hdfs dfsadmin -fs hdfs://localhost:9000 -safemode wait; do
+    echo "Esperando a que HDFS salga de Safemode..."
+    sleep 5
 done
-
-echo "Esperando a salir de Safe Mode..."
-hdfs dfsadmin -safemode wait
 
 echo "HDFS accesible y listo para escritura."
 
 echo "=== Subiendo datos al HDFS ==="
-hdfs dfs -mkdir -p /data/airbnb || true
+hdfs dfs -fs hdfs://localhost:9000 -mkdir -p /data/airbnb || true
 
 if [ -d "/app/data/Airbnb Data" ]; then
-    echo "Subiendo archivos..."
-    hdfs dfs -put -f "/app/data/Airbnb Data/"* /data/airbnb/ || true
+    echo "Carpeta 'Airbnb Data' encontrada. Subiendo..."
+    hdfs dfs -fs hdfs://localhost:9000 -put -f "/app/data/Airbnb Data/"* /data/airbnb/ || true
+elif [ -d "/app/data" ]; then
+    echo "Carpeta específica no encontrada, subiendo contenido de /app/data..."
+    hdfs dfs -fs hdfs://localhost:9000 -put -f /app/data/* /data/airbnb/ || true
 else
-    echo "ADVERTENCIA: No se encontró la carpeta '/app/data/Airbnb Data'. Verifica tu script de descarga."
+    echo "ADVERTENCIA: No se encontraron datos en /app/data"
 fi
 
 echo "=== Ejecutando PySpark analyses ==="
