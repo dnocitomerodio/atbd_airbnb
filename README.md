@@ -1,123 +1,176 @@
-# Proyecto Airbnb - Configuración de Entorno Hadoop y Spark en WSL
+# 🏠 Proyecto Airbnb - Pipeline de Big Data con Hadoop y Spark (Dockerizado)
 
-Este README explica cómo instalar, configurar y usar Hadoop 3.3.6 y Spark 3.4.3 en Ubuntu WSL en Windows.
+Este proyecto despliega un entorno completo de Big Data utilizando **Apache Hadoop (HDFS/YARN)** y **Apache Spark** dentro de contenedores Docker.
 
-# Requisitos previos: Windows 10 o 11 con WSL2 y Ubuntu 24.04 LTS instalada.
+El sistema está automatizado para realizar la ingesta de datos, almacenamiento distribuido y procesamiento ETL automáticamente al iniciar el contenedor.
 
--Java 11 (openjdk-11-jdk) instalado en WSL.
+## 📋 Arquitectura del Proyecto
 
--Conexión a internet para descargar Hadoop y Spark.
+El entorno está construido sobre **Ubuntu 22.04** e incluye:
 
--Editor de texto: Visual Studio Code o similar.
+- **Hadoop 3.3.6:** Sistema de archivos distribuido (HDFS) y gestor de recursos (YARN).
+- **Spark 3.5.1:** Motor de procesamiento de datos.
+- **JupyterLab:** Entorno interactivo para análisis de datos (PySpark).
+- **Python 3.10:** Con librerías `pyspark`, `pandas`, `kagglehub`.
 
-# Actualizar paquetes
+### 🔄 Flujo de Automatización (`start.sh`)
 
-sudo apt update && sudo apt upgrade -y
+Al iniciar el contenedor, ocurre lo siguiente automáticamente:
 
-# Instalar Git y wget
+1.  **Arranque:** Se inician los servicios de SSH, HDFS y YARN.
+2.  **Ingesta:** Se descargan los datasets de Airbnb desde Kaggle.
+3.  **HDFS:** Se formatean los datos y se suben a `hdfs://localhost:9000/data/airbnb/`.
+4.  **ETL:** Se ejecuta el script `run_analyses.py` que limpia los datos y los guarda en formato Parquet en `hdfs://localhost:9000/data/processed/`.
+5.  **Interfaz:** Se lanza JupyterLab listo para usar.
 
-sudo apt install git wget nano tree -y
+---
 
-## Configuración y ejecución del entorno Hadoop + Spark
+## 🚀 Requisitos Previos
 
-Este proyecto utiliza Hadoop 3.3.6 y Spark 3.4.3 sobre Ubuntu 24.04 en WSL2.
+- **Docker** y **Docker Compose** instalados (Desktop en Windows/Mac o Engine en Linux).
+- Una cuenta de Kaggle y un archivo `kaggle.json` (API Token).
 
-# Variables de entorno necesarias
+---
 
-Asegúrate de tener definidas las siguientes variables en tu ~/.bashrc:
+## 🛠️ Instalación y Despliegue
 
-# Java
+### 1. Clonar el repositorio
 
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
-export PATH=$JAVA_HOME/bin:$PATH
+```bash
+git clone https://github.com/dnocitomerodio/atbd_airbnb.git
+cd atbd_airbnb
+```
 
-# Hadoop
+### 2. Configurar Credenciales de Kaggle
 
-export HADOOP_HOME=$HOME/hadoop
-export PATH=$HADOOP_HOME/bin:$HADOOP_HOME/sbin:$PATH
+Para que la descarga automática de datos funcione, necesitas colocar tu token de API de Kaggle en la ruta correcta dentro del proyecto.
 
-# Spark
+1.  Descarga tu archivo `kaggle.json` desde tu perfil de Kaggle (Settings -> Create New Token).
+2.  Coloca el archivo en la siguiente ruta del proyecto:
+    `src/kaggle/kaggle.json`
 
-export SPARK_HOME=$HOME/spark
-export PATH=$SPARK_HOME/bin:$PATH
+> **Nota:** El `Dockerfile` se encarga de dar los permisos necesarios (chmod 600) a este archivo automáticamente.
 
-# SSH para Hadoop
+### 3. Construir y Arrancar
 
-export HADOOP_SSH_OPTS="-i ~/.ssh/id_ed25519_hadoop -o StrictHostKeyChecking=no"
+Ejecuta los siguientes comandos para construir la imagen y levantar el entorno:
 
-Luego recarga la configuración:
+# 1. Construir la imagen Docker (necesario la primera vez o si modificas el Dockerfile/scripts)
 
-source ~/.bashrc
-
-## Iniciar Hadoop
-
-Asegúrate de que tu servidor SSH esté corriendo:
-
-sudo service ssh start
-
-# Inicia HDFS:
-
-start-dfs.sh
-
-# Inicia YARN:
-
-start-yarn.sh
-
-Verifica que todos los procesos de Hadoop estén activos:
-
-jps
-
-Deberías ver procesos como:
-
-NameNode
-SecondaryNameNode
-DataNode
-ResourceManager
-NodeManager
-
-# Detener Hadoop
-
-stop-yarn.sh
-stop-dfs.sh
-
-# Iniciar Spark
-
-Spark con Scala:
-
-$SPARK_HOME/bin/spark-shell
-
-Spark con Python (PySpark):
-
-$SPARK_HOME/bin/pyspark
-
-# Detener Spark
-
-Simplemente sal de la consola de Spark con:
-
-:quit en spark-shell
-
-exit() en pyspark
-
-# Docker
-
-Para iniciar el proyecto con un contenedor, ejecute lo siguiente:
-
+```bash
 docker-compose build
+```
 
-Seguido:
+> **Nota:** La primera vez que ejecutes este comando, puede tardar varios minutos (llegando 45 minuotos si no dispones de buena conexión a internet) en descargar las imágenes de Hadoop y Spark, así como en instalar las dependencias de Python. Ten paciencia.
 
+# 2. Levantar el contenedor
+
+```bash
 docker-compose up
+```
 
-# ¿Cómo comprobar que todo funciona?
+---
 
-Abre otra terminal (no detengas el docker-compose up) y ejecuta:
+## 🖥️ Acceso a las Interfaces
 
+Una vez que el script de inicio haya terminado (verás en la terminal que se inicia JupyterLab), puedes acceder a los servicios a través de tu navegador:
+
+| Servicio                 | URL                                                    | Descripción                                                                        |
+| :----------------------- | :----------------------------------------------------- | :--------------------------------------------------------------------------------- |
+| **JupyterLab**           | [http://localhost:8888/lab](http://localhost:8888/lab) | Entorno de desarrollo para Notebooks y scripts de PySpark.                         |
+| **Hadoop NameNode**      | [http://localhost:9870](http://localhost:9870)         | Interfaz web de HDFS. Permite explorar archivos y ver el estado de los DataNodes.  |
+| **YARN ResourceManager** | [http://localhost:8088](http://localhost:8088)         | Gestor de recursos. Permite monitorizar los trabajos (jobs) de Spark en ejecución. |
+
+---
+
+## 📂 Estructura de Datos en HDFS
+
+Gracias al script de automatización (`start.sh` y `run_analyses.py`), los datos se organizan automáticamente en el sistema de archivos distribuido (HDFS) de la siguiente manera:
+
+- **Datos Crudos (Raw):** `hdfs://localhost:9000/data/airbnb/`
+  - Contiene los archivos CSV originales descargados de Kaggle (`Listings.csv`, `Reviews.csv`).
+- **Datos Procesados (Processed):** `hdfs://localhost:9000/data/processed/`
+  - Contiene los datos limpios y transformados en formato **Parquet** (columnar y optimizado para Big Data).
+  - Carpetas: `/listings` y `/reviews`.
+
+---
+
+## 📁 Estructura del Repositorio
+
+La organización de carpetas del proyecto es la siguiente:
+
+```text
+atbd_airbnb/
+├── data/                  # Carpeta temporal para descargas locales (se ignora en git si es grande)
+├── src/
+│   ├── analyses/          # Scripts de procesamiento ETL (run_analyses.py)
+│   ├── ingestion/         # Scripts de descarga de datos (download_data.py)
+│   └── kaggle/            # Lugar para colocar tu kaggle.json
+├── notebooks/             # Aquí se guardan tus Jupyter Notebooks (.ipynb)
+├── Dockerfile             # Definición de la imagen con Ubuntu, Hadoop y Spark
+├── docker-compose.yml     # Orquestación del contenedor
+├── start.sh               # Script maestro de inicialización
+└── README.md              # Documentación del proyecto
+```
+
+---
+
+## 🔧 Comandos Útiles y Debugging
+
+Si necesitas interactuar directamente con el entorno, ver logs o ejecutar comandos de Hadoop manualmente, puedes acceder a la terminal del contenedor.
+
+### 1. Acceder al contenedor
+
+Abre una nueva terminal (mientras el contenedor sigue corriendo) y ejecuta:
+
+```bash
 docker exec -it spark_container bash
+```
 
-Dentro del contenedor, ver si Hadoop está levantado:
+### 2. Comandos útiles dentro del contenedor
 
-jps
+Una vez dentro del contenedor, puedes usar estos comandos:
 
-Ver si Spark funciona:
+- **Verificar procesos activos (JPS):** Comprueba que los demonios de Hadoop (NameNode, DataNode, etc.) están vivos.
+  ```bash
+  jps
+  ```
+- **Listar archivos en HDFS:** Para ver qué se ha subido o procesado.
+  ```bash
+  hdfs dfs -ls /data/airbnb
+  hdfs dfs -ls /data/processed
+  ```
+- **Arrancar consola de PySpark:** Para pruebas rápidas sin usar Jupyter.
+  ```bash
+  pyspark
+  ```
 
-pyspark
+---
+
+## 🛑 Detener el entorno
+
+Para apagar el contenedor, detener los servicios de Hadoop/Spark y liberar recursos de tu máquina:
+
+1. Presiona Ctrl+C en la terminal donde se está ejecutando el log de Docker.
+
+2. O bien, ejecuta el siguiente comando en una terminal separada (dentro de la carpeta del proyecto):
+
+```bash
+docker exec -it spark_container bash
+```
+
+---
+
+## ⚠️ Solución de problemas comunes
+
+- **Error kaggle.json not found:** Asegúrate de que el archivo está en src/kaggle/kaggle.json antes de hacer el build.
+
+- **Contenedor se reinicia constantemente:** Revisa los logs con docker logs spark_container. Generalmente se debe a falta de memoria RAM asignada a Docker (Hadoop + Spark requieren al menos 4GB-6GB).
+
+- **HDFS en Safe Mode:** El script start.sh intenta gestionar esto automáticamente. Si persiste, entra al contenedor y ejecuta:
+
+```bash
+hdfs dfsadmin -fs hdfs://localhost:9000 -safemode leave.
+```
+
+Autores: dnocitomerodio, gpb117 y xabier.losa Licencia: MIT
