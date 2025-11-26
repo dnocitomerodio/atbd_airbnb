@@ -49,7 +49,8 @@ Para que la descarga automática de datos funcione, necesitas colocar tu token d
 2.  Coloca el archivo en la siguiente ruta del proyecto:
     `src/kaggle/kaggle.json`
 
-> **Nota:** El `Dockerfile` se encarga de dar los permisos necesarios (chmod 600) a este archivo automáticamente.
+> **Nota1:** Por conveniencia he subido al proyecto mi propio `kaggle.json`. Se implora a los usuarios con acceso a este repositorio privada que no la usen para fines no relacionado con el proyecto.
+> **Nota2:** El `Dockerfile` se encarga de dar los permisos necesarios (chmod 600) a este archivo automáticamente.
 
 ### 3. Construir y Arrancar
 
@@ -174,3 +175,4 @@ hdfs dfsadmin -fs hdfs://localhost:9000 -safemode leave.
 ```
 
 Autores: dnocitomerodio, gpb117 y xabier.losa Licencia: MIT
+
