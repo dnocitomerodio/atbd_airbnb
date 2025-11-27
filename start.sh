@@ -1,39 +1,34 @@
 #!/bin/bash
 set -e
 
-echo "=== Iniciando SSH ==="
-sudo service ssh start
-
 export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
 export HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
 export PATH="$JAVA_HOME/bin:$PATH"
-
 export SPARK_HOME=/opt/spark
 PY4J_ZIP=$(ls $SPARK_HOME/python/lib/py4j-*-src.zip | head -n 1)
 export PYTHONPATH=$SPARK_HOME/python:$PY4J_ZIP:$PYTHONPATH
-export PYSPARK_PYTHON=python3
-export PYSPARK_DRIVER_PYTHON=python3
+export SPARK_NO_DAEMONIZE=true
 
 CFG_DIR="$HADOOP_HOME/etc/hadoop"
 
-echo "=== Verificando/creando configs de Hadoop ==="
-
-cat > "$CFG_DIR/core-site.xml" <<'EOF'
+echo "Configurando core-site.xml..."
+cat > "$CFG_DIR/core-site.xml" <<EOF
 <?xml version="1.0"?>
 <configuration>
   <property>
     <name>fs.defaultFS</name>
-    <value>hdfs://localhost:9000</value>
+    <value>hdfs://spark-master:9000</value>
   </property>
 </configuration>
 EOF
 
-cat > "$CFG_DIR/hdfs-site.xml" <<'EOF'
+echo "Configurando hdfs-site.xml..."
+cat > "$CFG_DIR/hdfs-site.xml" <<EOF
 <?xml version="1.0"?>
 <configuration>
   <property>
     <name>dfs.replication</name>
-    <value>1</value>
+    <value>2</value>
   </property>
   <property>
     <name>dfs.namenode.name.dir</name>
@@ -54,80 +49,70 @@ cat > "$CFG_DIR/hdfs-site.xml" <<'EOF'
 </configuration>
 EOF
 
-if [ ! -s "$CFG_DIR/yarn-site.xml" ]; then
-  cat > "$CFG_DIR/yarn-site.xml" <<'EOF'
-<?xml version="1.0"?>
-<configuration>
-  <property>
-    <name>yarn.nodemanager.aux-services</name>
-    <value>mapreduce_shuffle</value>
-  </property>
-  <property>
-    <name>yarn.nodemanager.env-whitelist</name>
-    <value>JAVA_HOME,HADOOP_COMMON_HOME,HADOOP_HDFS_HOME,HADOOP_CONF_DIR,CLASSPATH_PREPEND_DISTCACHE,HADOOP_YARN_HOME,HADOOP_MAPRED_HOME</value>
-  </property>
-</configuration>
-EOF
-fi
-
 if ! grep -q "export JAVA_HOME" "$CFG_DIR/hadoop-env.sh"; then
   echo -e "\nexport JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64" >> "$CFG_DIR/hadoop-env.sh"
 fi
 
-echo "=== Limpieza de directorios temporales de Hadoop ==="
-rm -rf /tmp/hadoop-* || true
+if [ "$SPARK_ROLE" == "master" ]; then
+    echo ">>> ROL: MASTER (HDFS NameNode + Spark Master)"
+    
+    if [ ! -f "$HADOOP_HOME/data/namenode/current/VERSION" ]; then
+        echo "Formateando NameNode..."
+        hdfs namenode -format -force
+    fi
+    echo "Iniciando NameNode..."
+    hdfs --daemon start namenode
+    
+    echo "Iniciando Spark Master..."
+    /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master --host spark-master --port 7077 --webui-port 8080
 
-echo "=== Descargando datos con KaggleHub ==="
-python3 /app/src/ingestion/download_data.py || echo "Advertencia: Falló la descarga o ya existen"
-
-echo "=== Verificando NameNode ==="
-if [ ! -d "$HADOOP_HOME/data/namenode/current" ]; then
-    echo "Formateando NameNode..."
-    hdfs namenode -format -force
-else
-    echo "NameNode ya formateado."
-fi
-
-echo "=== Iniciando HDFS y YARN ==="
-$HADOOP_HOME/sbin/start-dfs.sh
-$HADOOP_HOME/sbin/start-yarn.sh
-
-echo "=== Esperando arranque de HDFS ==="
-sleep 5
-
-echo "=== Esperando a salir de Safe Mode ==="
-until hdfs dfsadmin -fs hdfs://localhost:9000 -safemode wait; do
-    echo "Esperando a que HDFS salga de Safemode..."
+elif [ "$SPARK_ROLE" == "worker" ]; then
+    echo ">>> ROL: WORKER (HDFS DataNode + Spark Worker)"
+    
     sleep 5
-done
+    echo "Iniciando DataNode..."
+    hdfs --daemon start datanode
+    
+    echo "Iniciando Spark Worker conectando a $SPARK_MASTER_URL..."
+    /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker $SPARK_MASTER_URL
 
-echo "HDFS accesible y listo para escritura."
+elif [ "$SPARK_ROLE" == "client" ]; then
+    echo ">>> ROL: CLIENTE (Jupyter + Scripts)"
+    
+    echo "Esperando a HDFS..."
+    sleep 15
+    until hdfs dfsadmin -fs hdfs://spark-master:9000 -safemode wait; do
+        echo "Esperando al NameNode..."
+        sleep 5
+    done
 
-echo "=== Preparando datos para subida ==="
-if [ -d "/app/data/Airbnb Data" ]; then
-    echo "Renombrando carpeta 'Airbnb Data' para evitar errores de espacios..."
-    mv "/app/data/Airbnb Data" /app/data/airbnb_clean
+    echo "=== Descargando datos ==="
+    python3 /app/src/ingestion/download_data.py || echo "Aviso: Descarga omitida o fallida"
+
+    echo "=== Subiendo a HDFS ==="
+    hdfs dfs -fs hdfs://spark-master:9000 -mkdir -p /data/airbnb || true
+    
+    if [ -d "/app/data/Airbnb Data" ]; then
+        mv "/app/data/Airbnb Data" /app/data/airbnb_clean
+    fi
+
+    if [ -d "/app/data/airbnb_clean" ]; then
+        hdfs dfs -fs hdfs://spark-master:9000 -put -f /app/data/airbnb_clean/* /data/airbnb/ || true
+    elif [ -d "/app/data" ]; then
+         find /app/data -name "*.csv" -exec hdfs dfs -fs hdfs://spark-master:9000 -put -f {} /data/airbnb/ \; || true
+    fi
+
+    echo "=== Ejecutando Analíticas ETL ==="
+    python3 /app/src/analyses/run_analyses.py || echo "Analíticas terminadas"
+
+    echo "=== Lanzando JupyterLab ==="
+    export PYSPARK_DRIVER_PYTHON=jupyter
+    export PYSPARK_DRIVER_PYTHON_OPTS="lab --allow-root --no-browser --ip=0.0.0.0 --NotebookApp.token='' --notebook-dir=/app/notebooks"
+    export SPARK_DRIVER_HOST=spark-client
+    
+    exec pyspark --master spark://spark-master:7077
+
+else
+    echo "Rol desconocido: $SPARK_ROLE"
+    exit 1
 fi
-
-echo "=== Subiendo datos al HDFS ==="
-hdfs dfs -fs hdfs://localhost:9000 -mkdir -p /data/airbnb || true
-
-if [ -d "/app/data/airbnb_clean" ]; then
-    echo "Subiendo archivos desde carpeta limpia..."
-    hdfs dfs -fs hdfs://localhost:9000 -put -f /app/data/airbnb_clean/* /data/airbnb/ || true
-elif [ -d "/app/data" ]; then
-    echo "Buscando archivos csv en /app/data..."
-    find /app/data -name "*.csv" -exec hdfs dfs -fs hdfs://localhost:9000 -put -f {} /data/airbnb/ \; || true
-fi
-
-echo "=== Verificando archivos en HDFS ==="
-hdfs dfs -fs hdfs://localhost:9000 -ls /data/airbnb
-
-echo "=== Ejecutando PySpark analyses ==="
-python3 /app/src/analyses/run_analyses.py || echo "Analíticas terminadas con errores no fatales"
-
-echo "=== Lanzando PySpark + JupyterLab ==="
-export PYSPARK_DRIVER_PYTHON=jupyter
-export PYSPARK_DRIVER_PYTHON_OPTS="lab --allow-root --no-browser --ip=0.0.0.0 --NotebookApp.token='' --notebook-dir=/app/notebooks"
-
-exec pyspark

@@ -1,17 +1,99 @@
+version: "3"
+
 services:
-  spark:
+  spark-master:
     build: .
-    container_name: spark_container
+    container_name: spark-master
+    hostname: spark-master
+    environment:
+      - SPARK_ROLE=master
+      - SPARK_MASTER_HOST=spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+      - "9870:9870"
+    networks:
+      - cluster_net
+    volumes:
+      - namenode_data:/opt/hadoop/data/namenode
+
+  spark-worker-1:
+    build: .
+    container_name: spark-worker-1
+    hostname: spark-worker-1
+    environment:
+      - SPARK_ROLE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+    networks:
+      - cluster_net
+    depends_on:
+      - spark-master
+    volumes:
+      - datanode1_data:/opt/hadoop/data/datanode
+
+  spark-worker-2:
+    build: .
+    container_name: spark-worker-2
+    hostname: spark-worker-2
+    environment:
+      - SPARK_ROLE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+    networks:
+      - cluster_net
+    depends_on:
+      - spark-master
+    volumes:
+      - datanode2_data:/opt/hadoop/data/datanode
+
+  spark-worker-3:
+    build: .
+    container_name: spark-worker-3
+    hostname: spark-worker-3
+    environment:
+      - SPARK_ROLE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_MEMORY=1G
+    networks:
+      - cluster_net
+    depends_on:
+      - spark-master
+    volumes:
+      - datanode3_data:/opt/hadoop/data/datanode
+
+  spark-client:
+    build: .
+    container_name: spark-client
+    hostname: spark-client
+    environment:
+      - SPARK_ROLE=client
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    ports:
+      - "8888:8888"
+      - "4040:4040"
+    networks:
+      - cluster_net
+    depends_on:
+      - spark-master
+      - spark-worker-1
+      - spark-worker-2
+      - spark-worker-3
     volumes:
       - ./data:/app/data
-      - ./src:/app/src/
+      - ./src:/app/src
       - ./notebooks:/app/notebooks
       - ./results:/app/results
-    ports:
-      - "4040:4040"
-      - "8888:8888"
-      - "9870:9870"
-      - "8088:8088"
-      - "7077:7077"
-    tty: true
-    restart: unless-stopped
+
+networks:
+  cluster_net:
+    driver: bridge
+
+volumes:
+  namenode_data:
+  datanode1_data:
+  datanode2_data:
+  datanode3_data:

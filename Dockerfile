@@ -47,7 +47,6 @@ WORKDIR /app
 RUN mkdir -p /app/notebooks /app/src /app/data
 
 COPY src/ /app/src/
-COPY data/ /app/data/
 
 RUN chmod 600 /app/src/kaggle/kaggle.json && \
     chown -R hadoop:hadoop /app/src/kaggle
@@ -57,7 +56,7 @@ RUN chown -R hadoop:hadoop $HADOOP_HOME $SPARK_HOME /app
 COPY start.sh /app/start.sh
 RUN chmod +x /app/start.sh
 
-EXPOSE 8888 9870 8088 7077 4040
+EXPOSE 8888 9870 8088 7077 4040 8080
 
 USER hadoop
 CMD ["/app/start.sh"]
