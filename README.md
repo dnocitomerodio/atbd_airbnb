@@ -37,7 +37,7 @@ Al iniciar el clúster, ocurre lo siguiente automáticamente:
 ### 1. Clonar el repositorio
 
 ```bash
-git clone [https://github.com/dnocitomerodio/atbd_airbnb.git](https://github.com/dnocitomerodio/atbd_airbnb.git)
+git clone https://github.com/dnocitomerodio/atbd_airbnb.git
 cd atbd_airbnb
 ```
 
